@@ -130,8 +130,15 @@ def run_experiment(exp: Experiment) -> Experiment:
         time.sleep(1)
     exp.recovery_time_s = round(time.time() - start, 1) if recovered else None
 
-    time.sleep(2)
-    exp.integrity_ok = check_ledger_integrity()
+    # Give the service (esp. postgres) time to finish accepting connections
+    # after a hard kill before judging integrity -- a too-short wait here
+    # produces false negatives (can't-reach != corrupted), not real failures.
+    exp.integrity_ok = False
+    for attempt in range(6):
+        time.sleep(3)
+        exp.integrity_ok = check_ledger_integrity()
+        if exp.integrity_ok:
+            break
     exp.result = "RECOVERED" if recovered else "DID NOT RECOVER WITHIN 30s"
     print(f"Result: {exp.result} (recovery_time_s={exp.recovery_time_s}, integrity_ok={exp.integrity_ok})")
     return exp

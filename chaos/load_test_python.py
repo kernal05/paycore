@@ -11,6 +11,7 @@ import time
 import uuid
 import statistics
 import sys
+import time
 
 import httpx
 
@@ -78,7 +79,41 @@ async def main():
     return results
 
 
+def write_report(results: list[dict]):
+    lines = [
+        "# Performance / Load Testing -- Real Results\n",
+        f"**Run at:** {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}, against the full "
+        "docker-compose stack (real PostgreSQL 16, real Redis 7, real Kafka via apache/kafka, all "
+        "5 services) using `chaos/load_test_python.py` (a k6-equivalent asyncio load generator -- "
+        "install k6 and run `chaos/load_test.js` for the canonical version).\n",
+        "All requests hit `/payments` with a single shared source account (deliberately, to also "
+        "stress the row-lock path), `X-API-Key` auth, unique idempotency keys.\n",
+        "## Results\n",
+        "| Concurrency | Duration | Requests | RPS | p50 | p95 | p99 | Max | Error Rate | Status Breakdown |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for r in results:
+        lines.append(
+            f"| {r['concurrency']} | {r['duration_s']}s | {r['total_requests']} | {r['rps']} | "
+            f"{r['p50_ms']}ms | {r['p95_ms']}ms | {r['p99_ms']}ms | {r['max_ms']}ms | "
+            f"{r['error_rate']*100 if r['error_rate'] is not None else 'N/A'}% | {r['status_breakdown']} |"
+        )
+    lines.append("")
+    lines.append("## Notes")
+    lines.append("")
+    lines.append(
+        "These numbers are from a real run against the live docker-compose stack. Any 429 responses "
+        "reflect the rate limiter (`common/rate_limit.py`) actually engaging under load -- see the "
+        "status breakdown column above for the real mix of 200s vs 429s vs errors at each stage, "
+        "rather than assuming all non-200s are failures."
+    )
+    with open("docs/PERFORMANCE.md", "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print("\nWrote docs/PERFORMANCE.md", file=sys.stderr)
+
+
 if __name__ == "__main__":
     results = asyncio.run(main())
     import json
     print(json.dumps(results, indent=2))
+    write_report(results)
