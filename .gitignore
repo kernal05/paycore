@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.env
+.terraform/
+*.tfstate
+*.tfstate.backup
+.DS_Store
+kubeconfig.yaml
+venv/
+.pytest_cache/
+.ruff_cache/
+chaos/RESULTS.md.bak
+.venv/
+*.env

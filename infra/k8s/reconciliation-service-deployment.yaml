@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reconciliation-service
+  namespace: fintech
+spec:
+  replicas: 2
+  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
+  selector: { matchLabels: { app: reconciliation-service } }
+  template:
+    metadata: { labels: { app: reconciliation-service } }
+    spec:
+      containers:
+        - name: reconciliation-service
+          image: ghcr.io/OWNER/fintech-platform/reconciliation-service:IMAGE_TAG_PLACEHOLDER_reconciliation_service
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: fintech-config }
+            - secretRef: { name: fintech-auth-secret }
+            - secretRef: { name: fintech-db-secret }
+          readinessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 5, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 15, periodSeconds: 20 }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: reconciliation-service, namespace: fintech }
+spec:
+  selector: { app: reconciliation-service }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+# Runs a full reconciliation sweep every 15 minutes, independent of the
+# real-time per-transaction checks, to catch anything that slipped through.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reconciliation-batch-sweep
+  namespace: fintech
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: batch-sweep
+              image: curlimages/curl:8.9.1
+              command: ["curl", "-X", "POST", "http://reconciliation-service:8000/reconcile/run-batch"]
+          restartPolicy: OnFailure

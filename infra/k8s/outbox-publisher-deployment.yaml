@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outbox-publisher
+  namespace: fintech
+spec:
+  # Deliberately 1 replica, not 3 like the API services: two publishers
+  # racing on the same outbox rows would both grab rows (mitigated by
+  # `FOR UPDATE SKIP LOCKED` so they wouldn't double-publish), but there's
+  # no throughput reason to run more than one for this workload, and it
+  # keeps the failure mode simple to reason about. If publish throughput
+  # ever became the bottleneck, the SKIP LOCKED query already makes it
+  # safe to scale this to N replicas.
+  replicas: 1
+  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
+  selector: { matchLabels: { app: outbox-publisher } }
+  template:
+    metadata: { labels: { app: outbox-publisher } }
+    spec:
+      containers:
+        - name: outbox-publisher
+          image: ghcr.io/OWNER/fintech-platform/outbox-publisher:IMAGE_TAG_PLACEHOLDER_outbox_publisher
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: fintech-config }
+            - secretRef: { name: fintech-db-secret }
+          readinessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 5, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 15, periodSeconds: 20 }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits: { cpu: "250m", memory: "128Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: outbox-publisher, namespace: fintech }
+spec:
+  selector: { app: outbox-publisher }
+  ports: [{ port: 8000, targetPort: 8000 }]

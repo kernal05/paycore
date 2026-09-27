@@ -1,0 +1,102 @@
+groups:
+  - name: payment-platform-slo
+    rules:
+      - alert: PaymentAPIHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{service="payment-api", status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{service="payment-api"}[5m])) > 0.01
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Payment API error rate above 1% (SLO burn)"
+          runbook: "docs/RUNBOOK.md#payment-api-high-error-rate"
+
+      # Multi-window burn-rate pair (see docs/SLO.md): both the fast (5m)
+      # and slow (1h) windows must agree before paging, which filters out
+      # brief blips that a single-window threshold would page on.
+      - alert: PaymentAPIFastBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{service="payment-api", status=~"5.."}[5m]))
+            / sum(rate(http_requests_total{service="payment-api"}[5m]))
+          ) > (14.4 * 0.001)
+          and
+          (
+            sum(rate(http_requests_total{service="payment-api", status=~"5.."}[1h]))
+            / sum(rate(http_requests_total{service="payment-api"}[1h]))
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "Payment API burning error budget fast enough to exhaust it in <2 days"
+          runbook: "docs/RUNBOOK.md#payment-api-high-error-rate"
+
+      - alert: PaymentAPISlowBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{service="payment-api", status=~"5.."}[2h]))
+            / sum(rate(http_requests_total{service="payment-api"}[2h]))
+          ) > 0.001
+          and
+          (
+            sum(rate(http_requests_total{service="payment-api", status=~"5.."}[24h]))
+            / sum(rate(http_requests_total{service="payment-api"}[24h]))
+          ) > 0.001
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Payment API on track to exhaust its 30-day error budget at the current rate"
+          runbook: "docs/RUNBOOK.md#payment-api-high-error-rate"
+
+      - alert: PaymentAPIHighLatency
+        expr: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service="payment-api"}[5m])) by (le)) > 0.5
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Payment API p99 latency above 500ms"
+          runbook: "docs/RUNBOOK.md#payment-api-high-latency"
+
+      - alert: LedgerServiceDown
+        expr: up{job="ledger-service"} == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "Ledger service is down — money movement is halted"
+          runbook: "docs/RUNBOOK.md#ledger-service-down"
+
+      - alert: ReconciliationMismatchSpike
+        expr: increase(business_events_total{service="reconciliation-service", event_type="mismatch_found"}[15m]) > 20
+        for: 0m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Reconciliation mismatches spiking — possible processor or bank issue"
+          runbook: "docs/RUNBOOK.md#reconciliation-mismatch-spike"
+
+      - alert: FraudBlockRateAnomaly
+        expr: |
+          sum(rate(business_events_total{service="fraud-engine", outcome="BLOCK"}[10m]))
+          /
+          sum(rate(business_events_total{service="fraud-engine"}[10m])) > 0.15
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Fraud block rate above 15% — check for a false-positive spike or an attack"
+          runbook: "docs/RUNBOOK.md#fraud-block-rate-anomaly"
+
+      - alert: OutboxPublishingLagging
+        expr: increase(business_events_total{service="outbox-publisher", event_type="publish_batch_failed"}[10m]) > 3
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Outbox publisher has failed multiple batches — events are queuing up undelivered to Kafka"
+          runbook: "docs/RUNBOOK.md#outbox-publisher-lagging"
+
+      - alert: TransactionsStuckUnknown
+        expr: increase(business_events_total{service="ledger-service", event_type="posting_unknown"}[30m]) > 10
+        for: 0m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Unusually many transactions landed in UNKNOWN — processor may be degraded, or webhooks aren't arriving"
+          runbook: "docs/RUNBOOK.md#transactions-stuck-in-unknown"

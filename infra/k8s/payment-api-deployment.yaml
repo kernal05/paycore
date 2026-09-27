@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-api
+  namespace: fintech
+  labels: { app: payment-api }
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }  # zero-downtime deploys
+  selector:
+    matchLabels: { app: payment-api }
+  template:
+    metadata:
+      labels: { app: payment-api }
+    spec:
+      containers:
+        - name: payment-api
+          image: ghcr.io/OWNER/fintech-platform/payment-api:IMAGE_TAG_PLACEHOLDER_payment_api
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: fintech-config }
+            - secretRef: { name: fintech-auth-secret }
+            - secretRef: { name: fintech-db-secret }  # payment_requests + webhook_events tables live here
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+      # Spread replicas across AZs so a single-AZ outage doesn't take the API down
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: payment-api } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-api
+  namespace: fintech
+spec:
+  selector: { app: payment-api }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-api-hpa
+  namespace: fintech
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: payment-api }
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
+    - type: Resource
+      resource: { name: memory, target: { type: Utilization, averageUtilization: 75 } }

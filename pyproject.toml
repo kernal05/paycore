@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 150
+exclude = ["infra", ".venv"]
+
+[tool.ruff.lint]
+# Pyflakes (unused imports/vars, undefined names) + pycodestyle errors.
+# Deliberately not enabling import-sorting (I) or style-opinion rule sets
+# (SIM, BLE, etc.) — this is a portfolio project's CI, not a style
+# enforcement exercise; it should catch real bugs, not bikeshed formatting.
+select = ["E", "F"]
+ignore = ["E731"]  # allow lambda assignment (used in a couple of test helpers)

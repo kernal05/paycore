@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-service
+  namespace: fintech
+spec:
+  replicas: 3
+  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
+  selector: { matchLabels: { app: ledger-service } }
+  template:
+    metadata: { labels: { app: ledger-service } }
+    spec:
+      containers:
+        - name: ledger-service
+          image: ghcr.io/OWNER/fintech-platform/ledger-service:IMAGE_TAG_PLACEHOLDER_ledger_service
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: fintech-config }
+            - secretRef: { name: fintech-auth-secret }
+            - secretRef: { name: fintech-db-secret }
+          readinessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 5, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 15, periodSeconds: 20 }
+          resources:
+            requests: { cpu: "150m", memory: "192Mi" }
+            limits: { cpu: "750m", memory: "384Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ledger-service, namespace: fintech }
+spec:
+  selector: { app: ledger-service }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: ledger-service-hpa, namespace: fintech }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: ledger-service }
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }

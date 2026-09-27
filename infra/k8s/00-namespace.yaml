@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fintech
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fintech-config
+  namespace: fintech
+data:
+  FRAUD_ENGINE_URL: "http://fraud-engine:8000"
+  LEDGER_SERVICE_URL: "http://ledger-service:8000"
+  REDIS_URL: "redis://redis:6379/0"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-bootstrap:9092"
+  REQUIRE_SERVICE_AUTH: "true"
+  REQUIRE_API_KEY: "true"
+  RATE_LIMIT_PER_MIN: "100"
+  MISMATCH_INJECTION_RATE: "0.12"
+---
+# PRODUCTION NOTE: these values are placeholders. The real secret values
+# come from AWS Secrets Manager via the External Secrets Operator (or
+# Vault), never committed to this repo — see docs/adr/ADR-010-auth.md.
+# `kubectl apply -f` this file as-is only works against a cluster that
+# already has the ExternalSecret CRD reconciling these keys; for a local
+# kind/minikube cluster without that operator, replace stringData below
+# with real values before applying.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fintech-db-secret
+  namespace: fintech
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql+psycopg2://fintech:CHANGE_ME@fintech-postgres-rds-endpoint:5432/fintech"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fintech-auth-secret
+  namespace: fintech
+type: Opaque
+stringData:
+  SERVICE_AUTH_SECRET: "CHANGE_ME_generate_with_openssl_rand_-hex_32"
+  WEBHOOK_SECRET: "CHANGE_ME_generate_with_openssl_rand_-hex_32"
+  VALID_API_KEYS: "CHANGE_ME_issue_real_customer_keys"

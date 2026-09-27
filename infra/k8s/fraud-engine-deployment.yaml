@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-engine
+  namespace: fintech
+spec:
+  replicas: 3
+  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
+  selector: { matchLabels: { app: fraud-engine } }
+  template:
+    metadata: { labels: { app: fraud-engine } }
+    spec:
+      containers:
+        - name: fraud-engine
+          image: ghcr.io/OWNER/fintech-platform/fraud-engine:IMAGE_TAG_PLACEHOLDER_fraud_engine
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: fintech-config }
+            - secretRef: { name: fintech-auth-secret }
+          readinessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 5, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 15, periodSeconds: 20 }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: fraud-engine, namespace: fintech }
+spec:
+  selector: { app: fraud-engine }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: fraud-engine-hpa, namespace: fintech }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: fraud-engine }
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
