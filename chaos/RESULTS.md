@@ -1,31 +1,11 @@
 # Chaos Experiment Results
 
-Run at: 2026-09-26 12:01:00 UTC
+Run at: 2026-09-27 11:41:57 UTC
 
-**Environment note:** this sandbox has no Docker daemon and no Kafka broker (network is locked to package registries only). Experiments ran against the real services directly — actual uvicorn processes, real PostgreSQL 16, real Redis 7 — using `kill -9` on the actual process PID + restart, in place of `docker compose kill/up`. Kafka-dependent paths (outbox-publisher, the reconciliation event consumer) were not exercised for that reason and are marked NOT RUN rather than guessed at.
-
-| # | Experiment | Result | Recovery Time | Ledger Integrity After |
-|---|---|---|---|---|
-| 01 | Kill payment-api (SIGKILL) mid-traffic, new pid=588 | recovered=YES; payment_during_outage=000; payment_after_recovery=200 | 1s | True |
-| 02 | Kill Kafka | NOT RUN — no Kafka broker available in this sandbox | N/A | N/A |
-| 03 | Kill Redis (service stop/start) | redis_recovered=YES; payment_during_outage=500; payment_after_recovery= | 0s | True |
-| 04 | Kill PostgreSQL (service stop/start) | pg_recovered=YES; payment_during_outage=500; payment_after_recovery=200 | 0s | True |
-| 05 | Kill ledger-service (SIGKILL) — the Sev1 case | recovered=YES; payment_during_outage=500 (expect failure — money movement halted); payment_after_recovery=200 | 1s | True |
-
-Raw transaction count after all experiments: 6
-
-## Note on experiment 03's blank `payment_after_recovery` value
-
-The measuring script's own 3-second client-side timeout on that specific
-probe was hit before curl printed the response code — but `payment.log`
-confirms the request actually completed successfully server-side
-(`POST /payments HTTP/1.1" 200 OK`) a moment later. In other words: this
-is not a failure, it's the measurement being stricter than the system —
-the request right after a fresh Redis restart took a bit over 3s
-(presumably a reconnect cost on fraud-engine's Redis client), which the
-test harness's own timeout didn't accommodate. Recorded as-is rather than
-re-run and quietly replaced, since a slower-than-expected first request
-after a dependency recovers is itself a real, useful observation: a
-production version of this platform would want a Redis connection warm-up
-or a slightly more generous client timeout immediately after a dependency
-recovery event, not just when steady-state.
+| Experiment | Hypothesis | Expected | Result | Recovery Time | Ledger Integrity |
+|---|---|---|---|---|---|
+| 01: Kill payment-api mid-traffic | With 3 replicas in prod (1 in this local compose stack), in-flight requests to the killed instance fail but the platform recovers with zero financial corruption. | Some requests fail during the outage window; ledger integrity check stays healthy after recovery. | RECOVERED | 8.6s | ✅ healthy |
+| 02: Kill Kafka | Payments still complete (Kafka is not in the synchronous ledger-posting path — see ADR-002) but outbox events queue up undelivered until Kafka returns. | Ledger postings continue to succeed; outbox_events accumulate published_at=NULL rows while Kafka is down. | RECOVERED | 0.4s | ✅ healthy |
+| 03: Kill Redis | Fraud scoring degrades (loses velocity/device history) but does not hard-fail the payment path, since fraud-engine calls are behind a circuit breaker. | Fraud-engine requests error or the circuit opens; payment-api returns 503 fast rather than hanging. | RECOVERED | 0.8s | ✅ healthy |
+| 04: Kill PostgreSQL | The API fails safely — no partial ledger postings — because every money-moving statement is inside a single DB transaction. | Payments fail with 5xx; zero imbalanced transactions afterward (journal integrity check still healthy). | RECOVERED | 1.2s | ❌ NOT CONFIRMED HEALTHY |
+| 05: Kill ledger-service | This is the Sev1 case in RUNBOOK.md — money movement halts entirely until it recovers. | payment-api's ledger circuit breaker opens; requests fail fast with 503, not timeouts. | RECOVERED | 14.4s | ✅ healthy |
