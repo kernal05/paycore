@@ -208,11 +208,6 @@ def reconcile_one(transaction_id: str) -> dict:
         session.close()
 
 
-@app.post("/reconcile/{transaction_id}", dependencies=auth_dep)
-def reconcile_endpoint(transaction_id: str):
-    return reconcile_one(transaction_id)
-
-
 @app.post("/reconcile/run-batch", dependencies=auth_dep)
 def reconcile_batch(limit: int = 200):
     """Scheduled safety-net sweep (see the CronJob in infra/k8s/): catches
@@ -316,6 +311,11 @@ def replay_exception(report_id: int):
     finally:
         session.close()
     return reconcile_one(str(row.transaction_id))
+
+
+@app.post("/reconcile/{transaction_id}", dependencies=auth_dep)
+def reconcile_endpoint(transaction_id: str):
+    return reconcile_one(transaction_id)
 
 
 @app.get("/reconcile/report", dependencies=auth_dep)
