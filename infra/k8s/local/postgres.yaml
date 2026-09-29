@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: fintech
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER, value: "fintech" }
+            - { name: POSTGRES_PASSWORD, value: "fintech" }
+            - { name: POSTGRES_DB, value: "fintech" }
+          ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - { name: initdb, mountPath: /docker-entrypoint-initdb.d }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "fintech"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", "fintech"] }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: initdb
+          configMap: { name: postgres-initdb }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: fintech
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]
