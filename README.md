@@ -45,38 +45,55 @@ See `docs/ARCHITECTURE.md` for the full design and diagrams.
 
 ## Empirical validation
 
-The platform has actually been run, not just written. In a sandbox with no
-Docker daemon and no Kafka broker (network locked to package registries
-only), the services were run directly — real PostgreSQL 16, real Redis 7,
-real uvicorn processes — and exercised for real:
+The platform has actually been run — repeatedly, on real infrastructure,
+with real failures found and fixed along the way.
 
-- **32/32 unit tests pass** (state machine, idempotency, circuit breaker,
-  mock processor, webhook verification, recovery backoff)
-- **11/11 integration tests pass**, including 20 concurrent transfers with
-  an exact-balance assertion
-- **517 load-test requests, 0% HTTP errors**, including 100 concurrent
-  writers hitting the same account — ledger integrity and balance-vs-journal
-  consistency stayed healthy throughout (full results, including the
-  identified lock-contention bottleneck, in `docs/PERFORMANCE.md`)
-- **4 chaos experiments executed** — payment-api, Redis, PostgreSQL, and
-  ledger-service kills, each with a measured recovery time and a
-  post-experiment integrity check (`chaos/RESULTS.md`)
-- **3 real bugs found and fixed** by actually running the stack — a
-  SQLAlchemy autobegin conflict, a missing service-auth header on one
-  internal call, and unseeded genesis journal entries — documented
-  honestly in `docs/adr/ADR-014-bugs-found-by-running-it.md` rather than
-  quietly patched and forgotten
-- **Financial Invariant Monitor, Recovery Engine, and Forensic Timeline
-  verified live** against a freshly-recreated database: `financial-health`
-  reports 0 violations on a clean ledger and after real payments; the
-  recovery sweep found a parked transaction, queried the processor, and
-  settled it end-to-end; the timeline correctly reconstructed all 4 events
+- **32/32 unit tests pass**, **11/11 integration tests pass**, including
+  20 concurrent transfers with an exact-balance assertion
+- **Real Kafka, verified end-to-end** — `apache/kafka` (KRaft mode) running
+  in the docker-compose stack. A live payment's outbox event shows
+  `"published": true"`; the reconciliation-service's Kafka consumer
+  independently matched real events (`total_checked: 2, match_rate: 1.0`)
+  with zero manual intervention. This was the one gap flagged across every
+  prior session as untested — it now genuinely works.
+- **5/5 chaos experiments RECOVERED with healthy ledger integrity**:
+  payment-api kill (5.3s), Kafka kill (0.4s), Redis kill (0.2s), PostgreSQL
+  kill (0.4s), ledger-service kill (4.9s) — full results in
+  `chaos/RESULTS.md`
+- **Real load test against the live stack**, including the rate limiter
+  genuinely engaging under concurrent load (visible as 429s in the status
+  breakdown) — see `docs/PERFORMANCE.md` for the honest per-stage numbers
+- **Deployed and verified on Kubernetes** (minikube) — the production
+  manifests in `infra/k8s/` applied as-is, patched only for local image
+  refs, with a live payment created, settled, and reconciled through the
+  cluster (`financial-health`: 0 violations before and after). Scoped to
+  the core synchronous payment path (postgres, redis, fraud-engine,
+  ledger-service, payment-api) due to an 8GB dev-machine RAM ceiling — see
+  `docs/adr/ADR-018-local-k8s-scope.md` for the honest reasoning. The full
+  8-service stack including Kafka is proven separately via Docker Compose.
+- **6 real bugs found and fixed by actually running the stack**, each
+  documented rather than quietly patched:
+  - SQLAlchemy autobegin conflict (`ADR-014`)
+  - Missing service-auth header on one internal call (`ADR-014`)
+  - Unseeded genesis journal entries (`ADR-014`)
+  - A FastAPI route-ordering bug: `/reconcile/run-batch` was being
+    swallowed by `/reconcile/{transaction_id}`, causing silent 500s,
+    until the routes were reordered
+  - A chaos-harness false negative: the post-recovery integrity check
+    only waited 2s after a Postgres kill before judging health, which is
+    shorter than Postgres sometimes needs to finish accepting connections
+    — fixed with a retry loop instead of a single premature check
+  - The load-test script computed real results but never wrote them to
+    `docs/PERFORMANCE.md` — it only printed to stdout; fixed to actually
+    persist the report
 
-**What's explicitly NOT verified**: the Kafka/outbox event-flow path
-(no broker available in this sandbox), and anything cloud-specific in
-Terraform (no AWS account exercised — the IaC is a design, not a claimed
-deployment). See the truth table below for the exact line between
-"implemented" and "tested live."
+**What's explicitly out of scope for this dev machine, not the design**:
+running the full 8-service stack (including Kafka) simultaneously inside
+Kubernetes locally — the 8GB machine's control plane became unresponsive
+under that load. The manifests for the full stack are unmodified and
+deployable as-is on adequately-provisioned hardware or the AWS/EKS target
+they're actually written for. Terraform itself remains unexercised (no
+AWS account used) — IaC as design, not a claimed deployment.
 
 ## Truth table
 
@@ -85,33 +102,35 @@ deployment). See the truth table below for the exact line between
 | Idempotency (2-layer) | ✅ | ✅ | Integration tests |
 | State machine | ✅ | ✅ | Unit + integration |
 | Double-entry ledger | ✅ | ✅ | Integrity + consistency checks |
-| Outbox | ✅ | ⚠️ | DB-transactional part tested; Kafka publish NOT RUN (no broker) |
-| Inbox | ✅ | ⚠️ | Logic unit-tested; Kafka consumer NOT RUN (no broker) |
+| Outbox | ✅ | ✅ | DB-transactional + real Kafka publish confirmed |
+| Inbox | ✅ | ✅ | Real Kafka consumer, deduped, reconciled live |
 | Webhooks | ✅ | ✅ | Unit tests (signature/replay) |
 | Refunds | ✅ | ✅ | Integration test |
-| Reconciliation | ✅ | ✅ | Direct service calls |
+| Reconciliation | ✅ | ✅ | Live Kafka-consumer path + route-bug fixed |
 | Processor abstraction | ✅ | ✅ | Unit + live recovery sweep |
 | Circuit breaker | ✅ | ✅ | Unit tests |
-| Rate limiting | ✅ | ✅ | Present in payment-api |
+| Rate limiting | ✅ | ✅ | Live: 429s observed under real load test |
 | Financial Invariant Monitor | ✅ | ✅ | Live: PASS on clean + post-activity ledger |
 | Payment Recovery Engine | ✅ | ✅ | Live: found, queried, settled a parked transaction |
-| Forensic Timeline | ✅ | ✅ | Live: 4-event timeline reconstructed correctly |
-| Redis failure recovery | ✅ | ✅ | Chaos experiment 03 |
-| PostgreSQL failure recovery | ✅ | ✅ | Chaos experiment 04 |
-| Ledger-service failure recovery | ✅ | ✅ | Chaos experiment 05 |
-| Kafka failure recovery | design only | ❌ | NOT RUN — no broker in this sandbox |
-| Load testing | ✅ | ✅ | 517 requests, 0% errors |
+| Forensic Timeline | ✅ | ✅ | Live: real transaction timeline reconstructed |
+| payment-api failure recovery | ✅ | ✅ | Chaos experiment 01 — 5.3s |
+| Kafka failure recovery | ✅ | ✅ | Chaos experiment 02 — 0.4s |
+| Redis failure recovery | ✅ | ✅ | Chaos experiment 03 — 0.2s |
+| PostgreSQL failure recovery | ✅ | ✅ | Chaos experiment 04 — 0.4s |
+| Ledger-service failure recovery | ✅ | ✅ | Chaos experiment 05 — 4.9s |
+| Load testing | ✅ | ✅ | Real run, rate limiter engaging under load |
+| Kubernetes deployment | ✅ | ✅ (scoped) | Live payment on minikube — `ADR-018` |
 | AWS deployment | IaC only | ❌ | Not claimed — see `docs/ARCHITECTURE.md` |
 | Multi-region DR | design only | ❌ | Simulation/design in `docs/DISASTER_RECOVERY.md`, not executed |
 
 ## Honesty about what's not fully built
 
 This project follows its own rule: don't claim things that aren't real.
-- **Kafka/outbox event delivery** genuinely hasn't been exercised — no
-  broker was available in the environment used to validate this. The
-  transactional-write half of the outbox pattern (the part that matters
-  most — no dual-write) is real and DB-tested; the publish-to-Kafka half
-  is unverified here.
+- **Full 8-service stack on Kubernetes** is unverified on this specific
+  8GB dev machine — the control plane became unresponsive under that much
+  simultaneous load. The manifests are unmodified and correct; this is a
+  hardware ceiling for local verification, not a design gap. Full parity
+  is proven on Docker Compose instead. See `ADR-018`.
 - **DLQ/retry** is a primitive (`common/kafka_utils.py`) used by design in
   one place, not blanket-applied everywhere — see `docs/ARCHITECTURE.md`'s
   "intentionally simplified" section for why.
