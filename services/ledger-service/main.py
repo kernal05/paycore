@@ -34,6 +34,16 @@ import recovery
 import invariants
 
 app = FastAPI(title="Ledger Service")
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # local demo only -- tighten for real deployments
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 processor_router = ProcessorRouter()
 logger = setup_observability(app, "ledger-service")
 
@@ -806,11 +816,11 @@ def payment_timeline(transaction_id: str):
                             "detail": {"event_id": row.event_id, "processor": row.processor, "processed": row.processed_at is not None}})
 
         for row in session.execute(
-            text("SELECT event_type, topic, published_at, created_at FROM outbox_events WHERE aggregate_id = :id ORDER BY created_at"),
+            text("SELECT event_type, topic, published_at, created_at, payload FROM outbox_events WHERE aggregate_id = :id ORDER BY created_at"),
             {"id": transaction_id},
         ).fetchall():
             events.append({"ts": row.created_at.isoformat(), "event": f"OUTBOX_EVENT_CREATED:{row.event_type}",
-                            "detail": {"topic": row.topic, "published": row.published_at is not None}})
+                            "detail": _outbox_detail(row)})
 
         events.sort(key=lambda e: e["ts"])
 
@@ -824,3 +834,20 @@ def payment_timeline(transaction_id: str):
         }
     finally:
         session.close()
+
+
+def _outbox_detail(row):
+    """Timeline detail for an outbox event: delivery state plus the business reason, if any."""
+    import json as _json
+    detail = {"topic": row.topic, "published": row.published_at is not None}
+    payload = row.payload
+    if isinstance(payload, str):
+        try:
+            payload = _json.loads(payload)
+        except Exception:
+            payload = None
+    if isinstance(payload, dict):
+        for k in ("reason", "detail", "processor_status"):
+            if k in payload:
+                detail[k] = payload[k]
+    return detail

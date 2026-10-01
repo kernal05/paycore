@@ -108,6 +108,7 @@ services:
       ledger-service: { condition: service_started }
 
   outbox-publisher:
+    restart: unless-stopped
     build: { context: ., dockerfile: services/outbox-publisher/Dockerfile }
     environment:
       DATABASE_URL: postgresql+psycopg2://fintech:fintech@postgres:5432/fintech
@@ -115,6 +116,22 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       kafka: { condition: service_started }
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_PAYMENT_API_URL: http://localhost:8000
+        VITE_LEDGER_API_URL: http://localhost:8001
+        VITE_RECON_API_URL: http://localhost:8003
+        VITE_CLIENT_API_KEY: demo-key-local-only
+        VITE_SERVICE_AUTH_SECRET: local-dev-only-secret-DO-NOT-USE-IN-PROD
+    ports: ["8090:80"]
+    depends_on:
+      - payment-api
+      - ledger-service
+      - reconciliation-service
 
   prometheus:
     image: prom/prometheus:v2.54.1

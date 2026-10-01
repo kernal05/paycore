@@ -57,6 +57,10 @@ class MockProcessor(PaymentProcessor):
     ]
 
     def _outcome_for(self, transaction_id: str) -> str:
+        import os
+        forced = os.getenv("MOCK_OUTCOME_OVERRIDE", "").strip().upper()
+        if forced:
+            return forced  # demo/testing switch: force every outcome
         digest = hashlib.sha256(transaction_id.encode()).hexdigest()
         bucket = int(digest[:8], 16) % 100
         cumulative = 0
