@@ -12,3 +12,8 @@ venv/
 chaos/RESULTS.md.bak
 .venv/
 *.env
+*.bak
+docker-compose.override.yml
+node_modules/
+frontend/node_modules/
+frontend/dist/

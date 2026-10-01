@@ -38,6 +38,16 @@ from common.kafka_utils import get_producer, get_consumer, TOPIC_LEDGER_POSTED, 
 from common.processors import ProcessorRouter
 
 app = FastAPI(title="Reconciliation Service")
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # local demo only -- tighten for real deployments
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 logger = setup_observability(app, "reconciliation-service")
 
 REQUIRE_AUTH = os.getenv("REQUIRE_SERVICE_AUTH", "true").lower() == "true"

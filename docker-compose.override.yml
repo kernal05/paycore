@@ -1,4 +1,0 @@
-services:
-  ledger-service:
-    environment:
-      MOCK_OUTCOME_OVERRIDE: SUCCESS   # delete this file to restore realistic failures

@@ -35,6 +35,16 @@ from common.auth import issue_token
 from common.webhooks import verify_webhook, WebhookVerificationError
 
 app = FastAPI(title="Payment API")
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # local demo only -- tighten for real deployments
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 logger = setup_observability(app, "payment-api")
 
 FRAUD_ENGINE_URL = os.getenv("FRAUD_ENGINE_URL", "http://fraud-engine:8000")
