@@ -851,3 +851,78 @@ def _outbox_detail(row):
             if k in payload:
                 detail[k] = payload[k]
     return detail
+
+
+# ------------------------------------------------------------ review queue
+
+@app.get("/review/pending", dependencies=auth_dep)
+def list_review_pending():
+    """Payments the fraud engine held for a human decision (AUTHORIZED + REVIEW)."""
+    session = SessionLocal()
+    try:
+        rows = session.execute(text(
+            "SELECT id::text AS id, status, amount_minor, currency, fraud_score, fraud_reasons, created_at "
+            "FROM transactions WHERE status = 'AUTHORIZED' AND fraud_decision = 'REVIEW' ORDER BY created_at ASC"
+        )).fetchall()
+        return {"pending": [dict(r._mapping) for r in rows]}
+    finally:
+        session.close()
+
+
+class ReviewDecisionRequest(BaseModel):
+    reviewer: str
+    note: str
+
+
+def _check_review_request(req):
+    if not req.reviewer.strip() or not req.note.strip():
+        raise HTTPException(400, "reviewer and note are required for a manual review decision")
+
+
+@app.post("/transactions/{transaction_id}/review-approve", dependencies=auth_dep)
+def review_approve(transaction_id: str, req: ReviewDecisionRequest):
+    """Human approves a fraud-held payment: audit it, then post it exactly like a normal payment."""
+    _check_review_request(req)
+    session = SessionLocal()
+    try:
+        txn = session.execute(text("SELECT id, status, fraud_decision FROM transactions WHERE id = :id"),
+                              {"id": transaction_id}).fetchone()
+        if txn is None:
+            raise HTTPException(404, "transaction not found")
+        if txn.status != "AUTHORIZED" or txn.fraud_decision != "REVIEW":
+            return {"transaction_id": transaction_id, "status": txn.status, "idempotent_replay": True}
+        session.rollback()
+        with session.begin():
+            _audit(session, f"human/{req.reviewer}", "REVIEW_APPROVED", transaction_id,
+                   {"status": "AUTHORIZED"}, {"note": req.note})
+    finally:
+        session.close()
+    return post_transaction(transaction_id)
+
+
+@app.post("/transactions/{transaction_id}/review-reject", dependencies=auth_dep)
+def review_reject(transaction_id: str, req: ReviewDecisionRequest):
+    """Human rejects a fraud-held payment: AUTHORIZED -> FAILED, no money moves."""
+    _check_review_request(req)
+    session = SessionLocal()
+    try:
+        txn = session.execute(text("SELECT id, status, fraud_decision FROM transactions WHERE id = :id"),
+                              {"id": transaction_id}).fetchone()
+        if txn is None:
+            raise HTTPException(404, "transaction not found")
+        if txn.status != "AUTHORIZED" or txn.fraud_decision != "REVIEW":
+            return {"transaction_id": transaction_id, "status": txn.status, "idempotent_replay": True}
+        session.rollback()
+        with session.begin():
+            _set_status(session, transaction_id, "AUTHORIZED", "FAILED")
+            _write_outbox(session, transaction_id, "ledger.failed", "ledger.posted",
+                          {"transaction_id": transaction_id, "reason": "manual_review_rejected",
+                           "detail": req.note, "reviewer": req.reviewer})
+            _audit(session, f"human/{req.reviewer}", "REVIEW_REJECTED", transaction_id,
+                   {"status": "AUTHORIZED"}, {"note": req.note})
+        BUSINESS_EVENTS.labels("ledger-service", "posting_failed", "manual_review_rejected").inc()
+        return {"transaction_id": transaction_id, "status": "FAILED"}
+    except IllegalTransitionError as e:
+        raise HTTPException(409, str(e))
+    finally:
+        session.close()

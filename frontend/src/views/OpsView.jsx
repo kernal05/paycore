@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import ReviewQueue from "./ReviewQueue.jsx";
 
 function CheckRow({ check }) {
   return (
@@ -84,6 +85,7 @@ export default function OpsView() {
 
   return (
     <div>
+      <ReviewQueue />
       <div className="view-header">
         <h1>Ops Console</h1>
         <p>Financial invariant monitoring, payment recovery, and reconciliation — the tools an on-call engineer would use.</p>

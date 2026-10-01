@@ -25,7 +25,7 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "CREATED": {"RISK_CHECK"},
     "RISK_CHECK": {"BLOCKED", "AUTHORIZED"},
     "BLOCKED": set(),  # terminal
-    "AUTHORIZED": {"PROCESSING"},
+    "AUTHORIZED": {"PROCESSING", "FAILED"},  # FAILED: human rejects a fraud-held payment
     "PROCESSING": {"SETTLED", "FAILED", "UNKNOWN"},
     "UNKNOWN": {"RECONCILIATION"},
     "RECONCILIATION": {"SETTLED", "FAILED", "MANUAL_REVIEW"},
