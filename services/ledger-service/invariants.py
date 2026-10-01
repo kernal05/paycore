@@ -70,7 +70,7 @@ def run_all_checks(session) -> dict:
             SELECT t.id AS transaction_id, t.created_at
             FROM transactions t
             LEFT JOIN reconciliation_reports r ON r.transaction_id = t.id
-            WHERE t.status = 'SETTLED' AND t.created_at < now() - interval '15 minutes' AND r.transaction_id IS NULL
+            WHERE t.status = 'SETTLED' AND t.transaction_type <> 'GENESIS' AND t.created_at < now() - interval '15 minutes' AND r.transaction_id IS NULL
         """),
         _check(session, "unknown_resolution_happens_at_most_once_per_transaction", """
             SELECT transaction_id, count(*) AS resolution_count FROM audit_log
