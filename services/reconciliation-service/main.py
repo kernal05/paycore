@@ -228,9 +228,13 @@ def reconcile_batch(limit: int = 200):
         pending = session.execute(
             text(
                 """
-                SELECT p.transaction_id FROM processor_records p
-                LEFT JOIN reconciliation_reports r ON r.transaction_id = p.transaction_id
+                SELECT t.id::text AS transaction_id, (p.transaction_id IS NOT NULL) AS has_proc
+                FROM transactions t
+                LEFT JOIN processor_records p ON p.transaction_id = t.id
+                LEFT JOIN reconciliation_reports r ON r.transaction_id = t.id
                 WHERE r.transaction_id IS NULL
+                  AND (p.transaction_id IS NOT NULL
+                       OR (t.status = 'SETTLED' AND t.transaction_type <> 'GENESIS'))
                 LIMIT :limit
                 """
             ),
@@ -239,7 +243,11 @@ def reconcile_batch(limit: int = 200):
     finally:
         session.close()
 
-    results = [reconcile_one(str(row.transaction_id)) for row in pending]
+    results = []
+    for row in pending:
+        if not row.has_proc:
+            simulate_external_records(str(row.transaction_id))  # event was missed: create the external records now
+        results.append(reconcile_one(str(row.transaction_id)))
     mismatches = sum(1 for r in results if r["mismatch"])
     return {"checked": len(results), "mismatches": mismatches}
 
@@ -378,7 +386,7 @@ def _consume_ledger_posted():
             if inserted is None:
                 continue  # already processed this exact offset — inbox caught a redelivery
 
-            if event_type == "ledger.posted" and transaction_id:
+            if event_type in ("ledger.posted", "ledger.refunded") and transaction_id:
                 simulate_external_records(transaction_id)
                 reconcile_one(transaction_id)
         except Exception:
