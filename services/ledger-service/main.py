@@ -897,7 +897,13 @@ def review_approve(transaction_id: str, req: ReviewDecisionRequest):
                    {"status": "AUTHORIZED"}, {"note": req.note})
     finally:
         session.close()
-    return post_transaction(transaction_id)
+    try:
+        result = post_transaction(transaction_id)
+    except HTTPException as e:
+        _record_review_outcome(transaction_id, req.reviewer, "ERROR", str(e.detail))
+        raise
+    _record_review_outcome(transaction_id, req.reviewer, result.get("status"), result.get("detail"))
+    return result
 
 
 @app.post("/transactions/{transaction_id}/review-reject", dependencies=auth_dep)
@@ -959,5 +965,19 @@ def list_transactions(limit: int = 100):
             "WHERE t.transaction_type <> 'GENESIS' ORDER BY t.created_at DESC LIMIT :limit"
         ), {"limit": limit}).fetchall()
         return {"transactions": [dict(r._mapping) for r in rows]}
+    finally:
+        session.close()
+
+
+def _record_review_outcome(transaction_id: str, reviewer: str, status, detail):
+    """Second audit entry for an approval: what actually happened after the reviewer said yes."""
+    session = SessionLocal()
+    try:
+        session.rollback()
+        with session.begin():
+            _audit(session, "service/ledger-service", "REVIEW_APPROVAL_OUTCOME", transaction_id,
+                   None, {"reviewer": reviewer, "final_status": status, "detail": detail})
+    except Exception:
+        logger.exception(f"could not record review outcome for {transaction_id}")
     finally:
         session.close()
