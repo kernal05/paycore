@@ -1,5 +1,45 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { money, when, statusInfo } from "../format.js";
+
+const LABELS = {
+  TRANSACTION_CREATED: "Payment received",
+  PAYMENT_CREATED: "Payment request recorded",
+  RISK_EVALUATED: "Security check",
+  PAYMENT_SETTLED: "Money moved",
+  REFUND_ISSUED: "Refund issued",
+  RECONCILIATION_MATCH: "Matched with bank records",
+  RECONCILIATION_MISMATCH: "Mismatch with bank records",
+  WEBHOOK_RECEIVED: "Bank notification received",
+  "OUTBOX_EVENT_CREATED:ledger.failed": "Payment failed",
+  "OUTBOX_EVENT_CREATED:ledger.posted": "Settlement announced",
+  "OUTBOX_EVENT_CREATED:ledger.refunded": "Refund announced",
+  "OUTBOX_EVENT_CREATED:ledger.unknown": "Waiting on bank confirmation",
+};
+const REASONS = {
+  processor_declined: "Declined by bank",
+  manual_review_rejected: "Rejected by reviewer",
+};
+
+function summarize(ev) {
+  const d = ev.detail || {};
+  switch (ev.event) {
+    case "RISK_EVALUATED":
+      return `Risk score ${d.after?.fraud_score ?? "?"}, result: ${d.after?.status ?? "?"}`;
+    case "PAYMENT_SETTLED":
+      return `${d.before?.status ?? "?"} → ${d.after?.status ?? "?"}`;
+    case "REFUND_ISSUED":
+      return `Reason: ${(d.after?.reason || "").replace(/_/g, " ")}`;
+    case "RECONCILIATION_MISMATCH":
+      return d.detail || d.category || "";
+    case "OUTBOX_EVENT_CREATED:ledger.failed":
+      return [REASONS[d.reason] || d.reason, d.detail].filter(Boolean).join(" — ");
+    case "TRANSACTION_CREATED":
+      return d.amount_minor != null ? money(d.amount_minor, d.currency) : "";
+    default:
+      return "";
+  }
+}
 
 export default function LedgerView({ initialTxnId }) {
   const [txnId, setTxnId] = useState(initialTxnId || "");
@@ -7,6 +47,7 @@ export default function LedgerView({ initialTxnId }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [integrity, setIntegrity] = useState(null);
+  const [raw, setRaw] = useState(false);
 
   useEffect(() => {
     if (initialTxnId) {
@@ -30,8 +71,7 @@ export default function LedgerView({ initialTxnId }) {
     setError(null);
     setTimeline(null);
     try {
-      const data = await api.getTimeline(target);
-      setTimeline(data);
+      setTimeline(await api.getTimeline(target.trim()));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -39,23 +79,22 @@ export default function LedgerView({ initialTxnId }) {
     }
   }
 
+  const failedEv = timeline?.timeline.find((e) => e.event === "OUTBOX_EVENT_CREATED:ledger.failed");
+  const info = timeline ? statusInfo(timeline.current_status, null, failedEv?.detail?.reason) : null;
+
   return (
     <div>
       <div className="view-header">
         <h1>Ledger</h1>
-        <p>Look up any transaction's full forensic timeline — every event that touched it, in order.</p>
+        <p>The full story of any payment, step by step.</p>
       </div>
 
       <div className="panel">
-        <div className="panel-title">Transaction lookup</div>
+        <div className="panel-title">Find a payment</div>
         <div className="field-row">
           <div className="field" style={{ flex: 3 }}>
-            <label>Transaction ID</label>
-            <input
-              value={txnId}
-              onChange={(e) => setTxnId(e.target.value)}
-              placeholder="paste a transaction id, e.g. from the Wallet tab"
-            />
+            <label>Reference</label>
+            <input value={txnId} onChange={(e) => setTxnId(e.target.value)} placeholder="paste a reference, or click a row in History" />
           </div>
         </div>
         <button className="btn" onClick={() => lookUp()} disabled={loading || !txnId}>
@@ -68,22 +107,26 @@ export default function LedgerView({ initialTxnId }) {
       {timeline && (
         <div className="panel">
           <div className="panel-title">
-            Timeline — {timeline.event_count} events — current status {timeline.current_status}
+            {money(timeline.amount_minor, timeline.currency)}{" "}
+            <span className={`badge ${info.cls}`}>{info.label}</span>
           </div>
+          <div className="hint" style={{ marginBottom: 10 }}>
+            {timeline.event_count} events · reference <span className="mono">{timeline.transaction_id}</span>
+          </div>
+          <label className="hint"><input type="checkbox" checked={raw} onChange={(e) => setRaw(e.target.checked)} /> show raw technical detail</label>
           <table>
             <thead>
-              <tr>
-                <th>Time</th>
-                <th>Event</th>
-                <th>Detail</th>
-              </tr>
+              <tr><th>When</th><th>What happened</th><th>Detail</th></tr>
             </thead>
             <tbody>
               {timeline.timeline.map((ev, i) => (
                 <tr key={i}>
-                  <td className="mono-small">{new Date(ev.ts).toLocaleTimeString()}</td>
-                  <td>{ev.event}</td>
-                  <td className="mono-small">{JSON.stringify(ev.detail)}</td>
+                  <td className="mono-small">{when(ev.ts)}</td>
+                  <td>{LABELS[ev.event] || ev.event}</td>
+                  <td>
+                    {summarize(ev)}
+                    {raw && <div className="mono-small">{JSON.stringify(ev.detail)}</div>}
+                  </td>
                 </tr>
               ))}
             </tbody>

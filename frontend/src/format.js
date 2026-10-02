@@ -24,6 +24,10 @@ export function statusInfo(status, fraudDecision, reason) {
       return fraudDecision === "REVIEW"
         ? { label: "Held for security review", cls: "badge-pending" }
         : { label: "Authorized", cls: "badge-pending" };
+    case "CREATED":
+      return { label: "Not processed", cls: "badge-pending" };
+    case "RISK_CHECK":
+      return { label: "Security check", cls: "badge-pending" };
     case "PROCESSING":
       return { label: "Processing", cls: "badge-pending" };
     case "UNKNOWN":

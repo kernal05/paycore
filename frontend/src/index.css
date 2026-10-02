@@ -320,3 +320,11 @@ td {
   .shell { flex-direction: column; }
   .rail { width: 100%; flex-direction: row; overflow-x: auto; }
 }
+
+/* ---- review queue buttons ---- */
+.btn-approve { background: #2a7a63; border: 1px solid #3aa585; color: #fff; }
+.btn-approve:hover:not(:disabled) { background: #33907a; }
+.btn-reject { background: #c4402d; border: 1px solid #e0614d; color: #fff; }
+.btn-reject:hover:not(:disabled) { background: #d6503d; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.panel input:not([type="checkbox"]) { color: var(--paper); background: #0e131b; border: 1px solid var(--line-dark); border-radius: 4px; padding: 8px 10px; width: 100%; }
