@@ -926,3 +926,38 @@ def review_reject(transaction_id: str, req: ReviewDecisionRequest):
         raise HTTPException(409, str(e))
     finally:
         session.close()
+
+
+# ------------------------------------------------------------ list endpoints (UI)
+
+@app.get("/accounts", dependencies=auth_dep)
+def list_accounts():
+    session = SessionLocal()
+    try:
+        rows = session.execute(text(
+            "SELECT id::text AS id, name, currency, balance_minor FROM accounts "
+            "WHERE id <> '00000000-0000-0000-0000-000000000000' ORDER BY name"
+        )).fetchall()
+        return {"accounts": [dict(r._mapping) for r in rows]}
+    finally:
+        session.close()
+
+
+@app.get("/transactions", dependencies=auth_dep)
+def list_transactions(limit: int = 100):
+    limit = max(1, min(limit, 200))
+    session = SessionLocal()
+    try:
+        rows = session.execute(text(
+            "SELECT t.id::text AS id, t.status, t.transaction_type, t.amount_minor, t.currency, "
+            "t.fraud_decision, t.fraud_score, t.created_at, sa.name AS source_name, da.name AS dest_name, "
+            "(SELECT o.payload->>'reason' FROM outbox_events o "
+            " WHERE o.aggregate_id::text = t.id::text AND o.event_type = 'ledger.failed' LIMIT 1) AS failure_reason "
+            "FROM transactions t "
+            "LEFT JOIN accounts sa ON sa.id = t.source_account_id "
+            "LEFT JOIN accounts da ON da.id = t.dest_account_id "
+            "WHERE t.transaction_type <> 'GENESIS' ORDER BY t.created_at DESC LIMIT :limit"
+        ), {"limit": limit}).fetchall()
+        return {"transactions": [dict(r._mapping) for r in rows]}
+    finally:
+        session.close()

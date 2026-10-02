@@ -91,6 +91,8 @@ export const api = {
   reconciliationReport: () => request(`${RECON_API}/reconcile/report`, { auth: "service" }),
   reconciliationExceptions: () => request(`${RECON_API}/reconciliation/exceptions`, { auth: "service" }),
   runReconciliationBatch: () => request(`${RECON_API}/reconcile/run-batch`, { method: "POST", auth: "service" }),
+  listAccounts: () => request(`${LEDGER_API}/accounts`, { auth: "service" }),
+  listTransactions: (limit = 100) => request(`${LEDGER_API}/transactions?limit=${limit}`, { auth: "service" }),
   reviewPending: () => request(`${LEDGER_API}/review/pending`, { auth: "service" }),
   reviewApprove: (id, body) => request(`${LEDGER_API}/transactions/${id}/review-approve`, { method: "POST", body, auth: "service" }),
   reviewReject: (id, body) => request(`${LEDGER_API}/transactions/${id}/review-reject`, { method: "POST", body, auth: "service" }),
