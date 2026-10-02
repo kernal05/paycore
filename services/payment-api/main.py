@@ -20,6 +20,7 @@ import sys
 
 import httpx
 import redis
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -36,7 +37,6 @@ from common.webhooks import verify_webhook, WebhookVerificationError
 
 app = FastAPI(title="Payment API")
 
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,

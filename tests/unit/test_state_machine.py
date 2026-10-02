@@ -79,3 +79,20 @@ def test_every_non_terminal_state_has_an_exit():
     for state, targets in ALLOWED_TRANSITIONS.items():
         if not is_terminal(state):
             assert len(targets) > 0, f"{state} is not terminal but has no outgoing transitions"
+
+
+def test_human_rejection_of_held_payment_is_allowed():
+    """A fraud-held payment (AUTHORIZED, never sent to the processor) can be failed directly by a reviewer."""
+    validate_transition("AUTHORIZED", "FAILED")
+
+
+def test_authorized_cannot_jump_to_other_final_states():
+    for target in ("SETTLED", "UNKNOWN", "REFUNDED", "BLOCKED"):
+        with pytest.raises(IllegalTransitionError):
+            validate_transition("AUTHORIZED", target)
+
+
+def test_failed_is_still_terminal_after_review_rejection_change():
+    assert is_terminal("FAILED")
+    with pytest.raises(IllegalTransitionError):
+        validate_transition("FAILED", "AUTHORIZED")
