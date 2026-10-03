@@ -1,0 +1,10 @@
+title = "paycore gitleaks config"
+[extend]
+useDefault = true
+[allowlist]
+description = "Known local-dev placeholders (documented in ADR-010 and api.js); never real credentials"
+regexes = [
+  '''local-dev-only-secret-DO-NOT-USE-IN-PROD''',
+  '''local-dev-only-webhook-secret-DO-NOT-USE-IN-PROD''',
+  '''demo-key-local-only''',
+]
