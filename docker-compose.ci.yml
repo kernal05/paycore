@@ -1,0 +1,6 @@
+# CI-only: makes the mock processor deterministic so happy-path integration tests don't flake.
+# Realistic declines/timeouts are covered by tests/unit/test_mock_processor_override.py.
+services:
+  ledger-service:
+    environment:
+      MOCK_OUTCOME_OVERRIDE: SUCCESS

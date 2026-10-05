@@ -26,6 +26,7 @@ import sys
 import threading
 
 import httpx
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -39,7 +40,6 @@ from common.processors import ProcessorRouter
 
 app = FastAPI(title="Reconciliation Service")
 
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,

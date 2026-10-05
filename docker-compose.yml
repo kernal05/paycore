@@ -10,6 +10,7 @@ x-shared-secrets: &shared-secrets
 
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: fintech
@@ -26,6 +27,7 @@ services:
       retries: 10
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     ports: ["6379:6379"]
     healthcheck:
@@ -35,6 +37,7 @@ services:
       retries: 10
 
   kafka:
+    restart: unless-stopped
     image: apache/kafka:3.9.0
     ports: ["9092:9092"]
     environment:
@@ -56,6 +59,7 @@ services:
       retries: 15
 
   ledger-service:
+    restart: unless-stopped
     build: { context: ., dockerfile: services/ledger-service/Dockerfile }
     environment:
       <<: *shared-secrets
@@ -66,6 +70,7 @@ services:
       postgres: { condition: service_healthy }
 
   fraud-engine:
+    restart: unless-stopped
     build: { context: ., dockerfile: services/fraud-engine/Dockerfile }
     environment:
       <<: *shared-secrets
@@ -76,6 +81,7 @@ services:
       redis: { condition: service_healthy }
 
   payment-api:
+    restart: unless-stopped
     build: { context: ., dockerfile: services/payment-api/Dockerfile }
     environment:
       <<: *shared-secrets
@@ -94,6 +100,7 @@ services:
       kafka: { condition: service_started }
 
   reconciliation-service:
+    restart: unless-stopped
     build: { context: ., dockerfile: services/reconciliation-service/Dockerfile }
     environment:
       <<: *shared-secrets
@@ -118,6 +125,7 @@ services:
       kafka: { condition: service_started }
 
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       dockerfile: Dockerfile

@@ -20,6 +20,7 @@ import os
 import sys
 import uuid
 
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -35,7 +36,6 @@ import invariants
 
 app = FastAPI(title="Ledger Service")
 
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
