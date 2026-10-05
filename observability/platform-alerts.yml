@@ -1,0 +1,70 @@
+groups:
+  - name: platform
+    rules:
+      # Heartbeat: always firing. If it ever stops arriving, the alert pipeline itself is broken.
+      - alert: Watchdog
+        expr: vector(1)
+        labels: { severity: none }
+        annotations:
+          summary: "Heartbeat - proves Prometheus can reach Alertmanager"
+
+      - alert: TargetDown
+        expr: up == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "A scrape target is down"
+          runbook: "docs/RUNBOOK.md#target-down"
+
+      # SLO.md promises a 30m AND 6h pair at 6x burn; the 5m/1h pair for payment-api already exists.
+      - alert: PaymentAPIMediumBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{service="payment-api", status=~"5.."}[30m]))
+            / sum(rate(http_requests_total{service="payment-api"}[30m]))
+          ) > (6 * 0.001)
+          and
+          (
+            sum(rate(http_requests_total{service="payment-api", status=~"5.."}[6h]))
+            / sum(rate(http_requests_total{service="payment-api"}[6h]))
+          ) > (6 * 0.001)
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Payment API burning its error budget 6x too fast"
+          runbook: "docs/RUNBOOK.md#payment-api-error-budget-burn"
+
+      # ledger-service SLO is 99.95% -> budget 0.0005
+      - alert: LedgerFastBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{service="ledger-service", status=~"5.."}[5m]))
+            / sum(rate(http_requests_total{service="ledger-service"}[5m]))
+          ) > (14.4 * 0.0005)
+          and
+          (
+            sum(rate(http_requests_total{service="ledger-service", status=~"5.."}[1h]))
+            / sum(rate(http_requests_total{service="ledger-service"}[1h]))
+          ) > (14.4 * 0.0005)
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "Ledger service burning its error budget fast"
+          runbook: "docs/RUNBOOK.md#ledger-error-budget-burn"
+
+      - alert: LedgerMediumBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{service="ledger-service", status=~"5.."}[30m]))
+            / sum(rate(http_requests_total{service="ledger-service"}[30m]))
+          ) > (6 * 0.0005)
+          and
+          (
+            sum(rate(http_requests_total{service="ledger-service", status=~"5.."}[6h]))
+            / sum(rate(http_requests_total{service="ledger-service"}[6h]))
+          ) > (6 * 0.0005)
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Ledger service burning its error budget 6x too fast"
+          runbook: "docs/RUNBOOK.md#ledger-error-budget-burn"

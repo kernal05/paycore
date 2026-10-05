@@ -1,0 +1,24 @@
+route:
+  receiver: tickets
+  group_by: [alertname, job, service]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['alertname="Watchdog"']
+      receiver: "null"
+    - matchers: ['severity=~"page|critical"']
+      receiver: pager
+    - matchers: ['severity=~"ticket|warning"']
+      receiver: tickets
+receivers:
+  - name: "null"
+  - name: pager
+    webhook_configs:
+      - url: http://alert-webhook:8080/page
+        send_resolved: true
+  - name: tickets
+    webhook_configs:
+      - url: http://alert-webhook:8080/ticket
+        send_resolved: true
+# Real delivery (Slack/email/PagerDuty) goes here later, with secrets from an env file, never from git.
