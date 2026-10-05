@@ -46,7 +46,7 @@ jobs:
         run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Bring up the full stack
-        run: docker compose up --build -d
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build -d
 
       - name: Wait for payment-api to be healthy
         run: |

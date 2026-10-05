@@ -100,7 +100,7 @@ def _service_headers(service_name: str) -> dict:
 
 def _call_ledger(method: str, path: str, json_body: dict | None = None) -> dict:
     def _do():
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=15.0) as client:  # > mock processor's 5s TIMEOUT sleep
             resp = client.request(
                 method, f"{LEDGER_SERVICE_URL}{path}", json=json_body,
                 headers=_service_headers("payment-api"),
