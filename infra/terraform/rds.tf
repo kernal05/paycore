@@ -66,7 +66,7 @@ module "rds" {
   maintenance_window      = "sun:03:30-sun:04:30"
 
   deletion_protection = true
-  skip_final_snapshot  = false
+  skip_final_snapshot = false
 
   performance_insights_enabled = true
   monitoring_interval          = 30

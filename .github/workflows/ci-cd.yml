@@ -43,7 +43,7 @@ jobs:
         with: { python-version: "3.12" }
 
       - name: Install test dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Bring up the full stack
         run: docker compose up --build -d
@@ -80,7 +80,7 @@ jobs:
       - name: Build image for scanning
         run: docker build -f services/${{ matrix.service }}/Dockerfile -t scan-target:${{ matrix.service }} .
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: scan-target:${{ matrix.service }}
           severity: "CRITICAL,HIGH"

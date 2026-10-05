@@ -73,16 +73,16 @@ resource "aws_elasticache_subnet_group" "fintech" {
 
 resource "aws_elasticache_replication_group" "fraud_velocity_cache" {
   replication_group_id = "${var.cluster_name}-redis"
-  description           = "Redis for fraud velocity counters and idempotency caching"
+  description          = "Redis for fraud velocity counters and idempotency caching"
 
-  engine               = "redis"
-  engine_version       = "7.1"
-  node_type            = "cache.r6g.large"
-  num_cache_clusters   = 2 # primary + replica, automatic failover
+  engine                     = "redis"
+  engine_version             = "7.1"
+  node_type                  = "cache.r6g.large"
+  num_cache_clusters         = 2 # primary + replica, automatic failover
   automatic_failover_enabled = true
   multi_az_enabled           = true
 
-  subnet_group_name = aws_elasticache_subnet_group.fintech.name
+  subnet_group_name  = aws_elasticache_subnet_group.fintech.name
   security_group_ids = [aws_security_group.redis.id]
 
   at_rest_encryption_enabled = true
