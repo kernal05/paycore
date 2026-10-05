@@ -113,3 +113,24 @@ without the shared secret cannot forge a valid signature (see ADR-012).
 2. If it's a genuine attack (velocity + new_device + large_amount
    clustering on a few accounts), leave blocking on and escalate to
    the fraud/security on-call instead of relaxing rules.
+
+
+## Target Down
+Alert `TargetDown`: Prometheus cannot scrape a service for 2 minutes.
+1. Open http://localhost:9090/targets and see which job is red.
+2. `docker compose ps -a` - look for Exited / restarting containers.
+3. `docker compose logs <service> --tail=50` - find why it stopped.
+4. `docker compose up -d <service>`; confirm the target turns green.
+Context: the outbox publisher once stayed down for four days after a chaos run and nothing noticed. This alert exists for that case.
+
+## Payment API Error Budget Burn
+Alert `PaymentAPIMediumBurn`: 5xx ratio is 6x the 99.9% budget over both 30m and 6h.
+1. Grafana "PayCore Overview": which service shows the 5xx ratio rising?
+2. `docker compose logs payment-api --tail=100`; check downstream ledger-service and fraud-engine health.
+3. If a dependency is down, follow that service's section here.
+
+## Ledger Error Budget Burn
+Alerts `LedgerFastBurn` / `LedgerMediumBurn`: ledger-service 5xx ratio is burning its 99.95% budget.
+1. `docker compose logs ledger-service --tail=100`.
+2. Check Postgres: Grafana "Postgres connections" vs max; `docker compose ps postgres`.
+3. After recovery run `curl localhost:8001/financial-health` and confirm PASS before declaring resolved.

@@ -1,0 +1,17 @@
+groups:
+  - name: postgres
+    rules:
+      - alert: PostgresConnectionsHigh
+        expr: sum(pg_stat_activity_count) / max(pg_settings_max_connections) > 0.70
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Postgres connections above 70% of max_connections"
+      - alert: PostgresExporterCannotConnect
+        expr: pg_up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Exporter cannot reach Postgres (possible connection exhaustion or outage)"

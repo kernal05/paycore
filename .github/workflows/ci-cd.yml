@@ -149,3 +149,14 @@ jobs:
           for svc in payment-api ledger-service fraud-engine reconciliation-service outbox-publisher; do
             kubectl rollout status deployment/$svc -n fintech --timeout=180s
           done
+
+  observability-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: promtool - check config and rule files
+        run: docker run --rm --entrypoint promtool -v "$PWD/observability:/etc/prometheus:ro" prom/prometheus:v2.54.1 check config /etc/prometheus/prometheus.yml
+      - name: promtool - unit-test alert rules
+        run: docker run --rm --entrypoint promtool -v "$PWD/observability:/etc/prometheus:ro" prom/prometheus:v2.54.1 test rules /etc/prometheus/tests/alerts_test.yml
+      - name: amtool - check Alertmanager config
+        run: docker run --rm --entrypoint amtool -v "$PWD/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" prom/alertmanager:v0.27.0 check-config /etc/alertmanager/alertmanager.yml

@@ -63,7 +63,8 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         start = time.time()
         response = await call_next(request)
         duration = time.time() - start
-        path = request.url.path
+        route = request.scope.get("route")
+        path = route.path if route is not None else "unmatched"  # template, not raw URL: bounded label cardinality
         REQUEST_COUNT.labels(self.service_name, request.method, path, response.status_code).inc()
         REQUEST_LATENCY.labels(self.service_name, request.method, path).observe(duration)
         return response
